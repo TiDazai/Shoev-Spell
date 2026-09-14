@@ -5,9 +5,14 @@ archive="$project_dir/Resources/Lexicon/lexicon.sqlite3.gz"
 target="$project_dir/Sources/ShoevSpell/Resources/lexicon.sqlite3"
 if [[ ! -f "$archive" ]]; then
     mkdir -p "$(dirname "$archive")"
-    curl --fail --location --progress-bar \
-        'https://github.com/TiDazai/Shoev-Spell/releases/download/v0.1.0/lexicon.sqlite3.gz' \
-        --output "$archive"
+    parts=("$project_dir"/Resources/Lexicon/parts/lexicon.sqlite3.gz.part-*)
+    if [[ -e "${parts[0]}" ]]; then
+        cat "${parts[@]}" > "$archive"
+    else
+        curl --fail --location --progress-bar \
+            'https://github.com/TiDazai/Shoev-Spell/releases/download/v0.1.0/lexicon.sqlite3.gz' \
+            --output "$archive"
+    fi
 fi
 if [[ ! -f "$target" || "$archive" -nt "$target" ]]; then
     gzip -dc "$archive" > "$target"
