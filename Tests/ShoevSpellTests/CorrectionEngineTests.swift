@@ -26,6 +26,11 @@ final class CorrectionEngineTests: XCTestCase {
         XCTAssertNil(engine.correction(for: "hello"))
     }
 
+    func testDoesNotCorrectShoevBrandNameToShoes() {
+        let engine = CorrectionEngine(lexicon: FakeLexicon(["shoes": 467, "shove": 366]), defaults: defaults())
+        XCTAssertNil(engine.correction(for: "Shoev"))
+    }
+
     func testDoesNotGuessWhenCandidatesAreTooClose() {
         let engine = CorrectionEngine(lexicon: FakeLexicon(["cat": 400, "cut": 390]), defaults: defaults())
         XCTAssertNil(engine.correction(for: "cot"))
@@ -40,5 +45,12 @@ final class CorrectionEngineTests: XCTestCase {
         let engine = CorrectionEngine(lexicon: Lexicon.shared, defaults: defaults())
         XCTAssertEqual(engine.correction(for: "zuckreberg")?.replacement, "zuckerberg")
         XCTAssertEqual(engine.correction(for: "превет")?.replacement, "привет")
+    }
+
+    func testBundledLexiconNeverChangesKnownRussianFunctionWords() {
+        let engine = CorrectionEngine(lexicon: Lexicon.shared, defaults: defaults())
+        for word in ["что", "это", "чтобы", "например"] {
+            XCTAssertNil(engine.correction(for: word), "Не должно исправляться известное слово: \(word)")
+        }
     }
 }

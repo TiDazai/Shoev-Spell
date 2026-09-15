@@ -19,6 +19,37 @@ cp "$project_dir/THIRD_PARTY_NOTICES.md" "$app/Contents/Resources/THIRD_PARTY_NO
 cp "$project_dir/LEXICON_LICENSES.md" "$app/Contents/Resources/LEXICON_LICENSES.md"
 bundle="$(find "$arm_bin" -maxdepth 1 -type d -name 'ShoevSpell_*.bundle' -print -quit)"
 [[ -z "$bundle" ]] || cp -R "$bundle" "$app/Contents/Resources/"
-codesign --force --deep --sign - "$app"
+if [[ -n "${SIGN_IDENTITY:-}" && "$SIGN_IDENTITY" != "-" ]]; then
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --entitlements "$project_dir/Resources/ShoevSpell.entitlements" \
+    --sign "$SIGN_IDENTITY" \
+    "$app"
+else
+  local_keychain="${SHOEV_SPELL_LOCAL_KEYCHAIN:-${HOME}/Library/Application Support/Shoev Spell Development/LocalSigning.keychain-db}"
+  local_identity="Shoev Spell Local Development"
+  if [[ -f "$local_keychain" ]] && security find-certificate -c "$local_identity" "$local_keychain" >/dev/null 2>&1; then
+    security unlock-keychain -p "" "$local_keychain"
+    certificate_sha="$({ security find-certificate -c "$local_identity" -Z "$local_keychain" || true; } | awk '/SHA-1/{print $3; exit}')"
+    if [[ -z "$certificate_sha" ]]; then
+      echo "Could not resolve local signing certificate" >&2
+      exit 1
+    fi
+    codesign \
+      --force \
+      --entitlements "$project_dir/Resources/ShoevSpell.entitlements" \
+      --sign "$certificate_sha" \
+      --keychain "$local_keychain" \
+      "$app"
+  else
+    codesign \
+      --force \
+      --entitlements "$project_dir/Resources/ShoevSpell.entitlements" \
+      --sign - \
+      "$app"
+  fi
+fi
 codesign --verify --deep --strict "$app"
 echo "$app"

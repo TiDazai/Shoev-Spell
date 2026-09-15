@@ -3,6 +3,8 @@ import Foundation
 enum PreferenceKey {
     static let enabled = "enabled"
     static let automaticCorrection = "automaticCorrection"
+    static let automaticPunctuation = "automaticPunctuation"
+    static let automaticCapitalization = "automaticCapitalization"
     static let journalEnabled = "journalEnabled"
     static let minimumLength = "minimumLength"
     static let minimumScore = "minimumScore"
@@ -14,6 +16,8 @@ enum Preferences {
         UserDefaults.standard.register(defaults: [
             PreferenceKey.enabled: true,
             PreferenceKey.automaticCorrection: true,
+            PreferenceKey.automaticPunctuation: true,
+            PreferenceKey.automaticCapitalization: true,
             PreferenceKey.journalEnabled: true,
             PreferenceKey.minimumLength: 3,
             PreferenceKey.minimumScore: 250,

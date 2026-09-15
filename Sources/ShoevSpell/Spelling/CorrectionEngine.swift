@@ -1,6 +1,7 @@
 import Foundation
 
 final class CorrectionEngine {
+    private static let protectedWords: Set<String> = ["shoev"]
     private let lexicon: WordScoring
     private let defaults: UserDefaults
 
@@ -11,7 +12,8 @@ final class CorrectionEngine {
 
     func correction(for original: String) -> Correction? {
         let normalized = original.lowercased(with: Locale(identifier: "en_US_POSIX"))
-        guard normalized.count >= defaults.integer(forKey: PreferenceKey.minimumLength),
+        guard Self.protectedWords.contains(normalized) == false,
+              normalized.count >= defaults.integer(forKey: PreferenceKey.minimumLength),
               normalized.count <= 32,
               let language = SpellLanguage.detect(in: normalized) else { return nil }
         let originalScore = lexicon.score(for: normalized, language: language)

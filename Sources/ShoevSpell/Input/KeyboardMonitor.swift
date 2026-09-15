@@ -1,6 +1,8 @@
 import Carbon.HIToolbox
+import AppKit
 import CoreGraphics
 import Foundation
+import OSLog
 
 protocol KeyboardMonitorDelegate: AnyObject {
     func monitorDidReset(_ monitor: KeyboardMonitor)
@@ -8,6 +10,7 @@ protocol KeyboardMonitorDelegate: AnyObject {
 }
 
 final class KeyboardMonitor {
+    private let logger = Logger(subsystem: "com.shoev.spell", category: "monitor")
     weak var delegate: KeyboardMonitorDelegate?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
@@ -17,8 +20,22 @@ final class KeyboardMonitor {
 
     @discardableResult
     func requestPermissions() -> Bool {
-        (CGPreflightListenEventAccess() || CGRequestListenEventAccess()) &&
-        (CGPreflightPostEventAccess() || CGRequestPostEventAccess())
+        let canListen = CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+        let canPost = CGPreflightPostEventAccess() || CGRequestPostEventAccess()
+        return canListen && canPost
+    }
+
+    func openMissingPermissionSettings() {
+        let anchor: String
+        if !CGPreflightListenEventAccess() {
+            anchor = "Privacy_ListenEvent"
+        } else if !CGPreflightPostEventAccess() {
+            anchor = "Privacy_Accessibility"
+        } else {
+            return
+        }
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     @discardableResult
@@ -33,7 +50,10 @@ final class KeyboardMonitor {
             eventsOfInterest: mask,
             callback: spellKeyboardCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return false }
+        ) else {
+            logger.error("Event tap creation failed; listenPermission=\(CGPreflightListenEventAccess()), postPermission=\(CGPreflightPostEventAccess())")
+            return false
+        }
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, created, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: created, enable: true)
@@ -43,6 +63,7 @@ final class KeyboardMonitor {
             guard let tap = self?.tap, !CGEvent.tapIsEnabled(tap: tap) else { return }
             CGEvent.tapEnable(tap: tap, enable: true)
         }
+        logger.info("Event tap started; listenPermission=\(CGPreflightListenEventAccess()), postPermission=\(CGPreflightPostEventAccess())")
         return true
     }
 

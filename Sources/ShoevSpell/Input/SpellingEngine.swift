@@ -1,25 +1,41 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import OSLog
 
 final class SpellingEngine: KeyboardMonitorDelegate {
+    private let logger = Logger(subsystem: "com.shoev.spell", category: "input")
     private let corrector: CorrectionEngine
+    private let punctuator: RussianPunctuationEngine
     private let injector: EventInjector
     private let journal: JournalStore
     private var word = ""
+    private var phrase = ""
     private var activePID: pid_t?
 
-    init(corrector: CorrectionEngine = CorrectionEngine(), injector: EventInjector = EventInjector(), journal: JournalStore = JournalStore()) {
+    init(
+        corrector: CorrectionEngine = CorrectionEngine(),
+        punctuator: RussianPunctuationEngine = RussianPunctuationEngine(),
+        injector: EventInjector = EventInjector(),
+        journal: JournalStore = JournalStore()
+    ) {
         self.corrector = corrector
+        self.punctuator = punctuator
         self.injector = injector
         self.journal = journal
     }
 
-    func monitorDidReset(_ monitor: KeyboardMonitor) { reset() }
+    func monitorDidReset(_ monitor: KeyboardMonitor) {
+        if !phrase.isEmpty {
+            logger.info("Input context reset externally; bufferedCharacters=\(self.phrase.count)")
+        }
+        reset()
+    }
 
     func monitor(_ monitor: KeyboardMonitor, keyDown event: CGEvent, text: String, keyCode: CGKeyCode) -> Bool {
         let app = NSWorkspace.shared.frontmostApplication
         if activePID != app?.processIdentifier {
+            logger.info("Frontmost application changed; bufferedCharacters=\(self.phrase.count)")
             activePID = app?.processIdentifier
             reset()
         }
@@ -27,27 +43,48 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             reset(); return false
         }
         if event.flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty == false {
+            logger.info("Input context reset by modifier; bufferedCharacters=\(self.phrase.count)")
             reset(); return false
         }
         if keyCode == 51 {
-            if !word.isEmpty { word.removeLast() }
+            if !phrase.isEmpty { phrase.removeLast() }
+            rebuildCurrentWord()
             return false
         }
         if [123, 124, 125, 126, 115, 119, 116, 121].contains(keyCode) {
+            logger.info("Input context reset by navigation; bufferedCharacters=\(self.phrase.count)")
             reset(); return false
         }
         guard !text.isEmpty else { return false }
         if text.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) {
-            word += text
+            let shouldCapitalize = UserDefaults.standard.bool(forKey: PreferenceKey.automaticCapitalization)
+                && phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let capturedText = shouldCapitalize ? punctuator.capitalized(text) : text
+            word += capturedText
+            phrase += capturedText
+            if phrase.count > 500 {
+                phrase = word
+            }
+            if capturedText != text {
+                injector.replace(deleteCount: 0, with: capturedText)
+                return true
+            }
             return false
         }
-        guard !word.isEmpty else { return false }
-        defer { reset() }
-        guard UserDefaults.standard.bool(forKey: PreferenceKey.automaticCorrection),
-              let correction = corrector.correction(for: word) else { return false }
-        injector.replace(deleteCount: word.count, with: correction.replacement, trailingEvent: event)
-        journal.record(correction, application: app)
-        return true
+
+        if text == " " {
+            return finishSegment(trailingEvent: event, delimiter: text, endsSentence: false, application: app)
+        }
+        if text == "\r" || text == "\n" {
+            return finishSegment(trailingEvent: event, delimiter: text, endsSentence: true, application: app)
+        }
+        if text.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: ",.;:!?…").contains($0) }) {
+            let endsSentence = text.unicodeScalars.contains { CharacterSet(charactersIn: ".!?…").contains($0) }
+            return finishSegment(trailingEvent: event, delimiter: text, endsSentence: endsSentence, application: app)
+        }
+
+        reset()
+        return false
     }
 
     private func isExcluded(_ app: NSRunningApplication?) -> Bool {
@@ -55,5 +92,67 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         return UserDefaults.standard.stringArray(forKey: PreferenceKey.excludedApplications)?.contains(id) == true
     }
 
-    private func reset() { word.removeAll(keepingCapacity: true) }
+    private func finishSegment(
+        trailingEvent: CGEvent,
+        delimiter: String,
+        endsSentence: Bool,
+        application: NSRunningApplication?
+    ) -> Bool {
+        let originalPhrase = phrase
+        var replacement = phrase
+        var correction: Correction?
+
+        if !word.isEmpty,
+           UserDefaults.standard.bool(forKey: PreferenceKey.automaticCorrection),
+           let found = corrector.correction(for: word) {
+            replacement.removeLast(word.count)
+            replacement += found.replacement
+            correction = found
+        }
+
+        if UserDefaults.standard.bool(forKey: PreferenceKey.automaticPunctuation) {
+            let beforePunctuation = replacement
+            replacement = punctuator.punctuate(replacement)
+            logger.info("Punctuation evaluated; bufferedCharacters=\(originalPhrase.count), wordCharacters=\(self.word.count), changed=\(beforePunctuation != replacement)")
+            if delimiter == "\r" || delimiter == "\n" {
+                replacement = replacement.trimmingCharacters(in: .whitespaces)
+                if let last = replacement.last,
+                   CharacterSet(charactersIn: ".!?…:;").contains(last.unicodeScalars.first!) == false {
+                    replacement.append(punctuator.terminalMark(for: replacement))
+                }
+            }
+        }
+
+        if replacement != originalPhrase {
+            injector.replace(deleteCount: originalPhrase.count, with: replacement, trailingEvent: trailingEvent)
+            if let correction { journal.record(correction, application: application) }
+            if endsSentence {
+                reset()
+            } else {
+                phrase = replacement + delimiter
+                word.removeAll(keepingCapacity: true)
+            }
+            return true
+        }
+
+        if let correction { journal.record(correction, application: application) }
+        if endsSentence {
+            reset()
+        } else {
+            phrase += delimiter
+            word.removeAll(keepingCapacity: true)
+        }
+        return false
+    }
+
+    private func rebuildCurrentWord() {
+        word = String(phrase.reversed().prefix { character in
+            character.unicodeScalars.allSatisfy { CharacterSet.letters.contains($0) }
+        }.reversed())
+    }
+
+    private func reset() {
+        word.removeAll(keepingCapacity: true)
+        phrase.removeAll(keepingCapacity: true)
+    }
 }

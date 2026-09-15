@@ -7,6 +7,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let menu = NSMenu()
     private lazy var enabled = item("Shoev Spell включён", #selector(toggleEnabled))
     private lazy var automatic = item("Исправлять автоматически", #selector(toggleAutomatic))
+    private lazy var punctuation = item("Расставлять знаки препинания", #selector(togglePunctuation))
+    private lazy var capitalization = item("Начинать предложения с заглавной", #selector(toggleCapitalization))
     private lazy var journal = item("Записывать исправления", #selector(toggleJournal))
     private lazy var login = item("Запускать при входе", #selector(toggleLogin))
     private lazy var permissions = item("Выдать системные разрешения…", #selector(requestPermissions))
@@ -22,6 +24,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.delegate = self
         menu.addItem(enabled)
         menu.addItem(automatic)
+        menu.addItem(punctuation)
+        menu.addItem(capitalization)
         menu.addItem(journal)
         menu.addItem(.separator())
         menu.addItem(login)
@@ -37,6 +41,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     func refresh() {
         enabled.state = UserDefaults.standard.bool(forKey: PreferenceKey.enabled) ? .on : .off
         automatic.state = UserDefaults.standard.bool(forKey: PreferenceKey.automaticCorrection) ? .on : .off
+        punctuation.state = UserDefaults.standard.bool(forKey: PreferenceKey.automaticPunctuation) ? .on : .off
+        capitalization.state = UserDefaults.standard.bool(forKey: PreferenceKey.automaticCapitalization) ? .on : .off
         journal.state = UserDefaults.standard.bool(forKey: PreferenceKey.journalEnabled) ? .on : .off
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         permissions.isHidden = monitor.isRunning
@@ -51,8 +57,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func toggleEnabled() { toggle(PreferenceKey.enabled) }
     @objc private func toggleAutomatic() { toggle(PreferenceKey.automaticCorrection) }
+    @objc private func togglePunctuation() { toggle(PreferenceKey.automaticPunctuation) }
+    @objc private func toggleCapitalization() { toggle(PreferenceKey.automaticCapitalization) }
     @objc private func toggleJournal() { toggle(PreferenceKey.journalEnabled) }
-    @objc private func requestPermissions() { _ = monitor.requestPermissions(); _ = monitor.start(); refresh() }
+    @objc private func requestPermissions() {
+        let granted = monitor.requestPermissions()
+        if granted {
+            _ = monitor.start()
+            refresh()
+        } else {
+            monitor.openMissingPermissionSettings()
+        }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func toggleLogin() {
