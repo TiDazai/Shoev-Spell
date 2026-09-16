@@ -1,0 +1,31 @@
+# Shoev Spell для Windows
+
+Это Windows-версия Shoev Spell в том же репозитории и с тем же локальным словарём, что и версия для macOS.
+
+## Возможности
+
+- исправление русских и английских опечаток при завершении слова;
+- консервативные правила русской пунктуации;
+- заглавная буква в начале предложения;
+- точка или вопросительный знак перед Enter;
+- управление функциями из значка в области уведомлений;
+- полноценное окно настроек с фирменной иконкой;
+- локальный журнал исправлений;
+- автозапуск вместе с Windows;
+- полностью локальная обработка.
+
+Ввод через RDP, Parsec и другие средства удалённого доступа поддерживается: приложение отличает такой ввод от событий, которые создаёт само.
+
+Парольные поля стандартных элементов Windows пропускаются. По умолчанию также исключены терминалы, IDE и популярные менеджеры паролей. Из-за защиты Windows приложение не может менять текст в процессе с более высокими правами.
+
+## Сборка
+
+Нужен .NET SDK 8 или новее:
+
+```powershell
+dotnet build ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release -p:SelfContained=false
+dotnet run --project ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release --no-build -p:SelfContained=false -- --self-test
+dotnet publish ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release -r win-x64 --self-contained true
+```
+
+GitHub Actions прикладывает готовый `Shoev-Spell-Windows-x64.zip` к тому же релизу, где находится macOS DMG.

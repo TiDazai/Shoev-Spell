@@ -13,3 +13,18 @@ jobs:
         run: ./scripts/prepare-lexicon.sh
       - name: Run tests
         run: swift test
+
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Build Windows version
+        run: dotnet build windows/ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release -p:SelfContained=false
+      - name: Run Windows self-test
+        shell: pwsh
+        run: |
+          dotnet run --project windows/ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release --no-build -p:SelfContained=false -- --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Windows self-test failed" }
