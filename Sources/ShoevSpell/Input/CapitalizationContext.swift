@@ -6,7 +6,13 @@ struct CaretContext {
     let selectionLength: Int
     var nextCharacter: Character? = nil
 
-    var startsInsideWord: Bool { prefix.last?.isLetter == true || nextCharacter?.isLetter == true }
+    var startsInsideWord: Bool {
+        func isToken(_ character: Character?) -> Bool {
+            guard let character else { return false }
+            return character.isLetter || character.isNumber || "@#/_\\-'’".contains(character)
+        }
+        return isToken(prefix.last) || isToken(nextCharacter)
+    }
 }
 
 enum CapitalizationContext {

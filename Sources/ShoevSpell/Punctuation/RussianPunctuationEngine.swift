@@ -183,8 +183,8 @@ final class RussianPunctuationEngine {
     private func addGreetingComma(_ tokens: [Token], in text: String, to offsets: inout Set<Int>) {
         let greetings: Set<String> = ["добрый", "привет", "здравствуй", "здравствуйте"]
         guard greetings.contains(tokens[0].value), tokens.count > 1 else { return }
-        if tokens[0].value == "добрый", tokens.count > 2,
-           ["день", "вечер"].contains(tokens[1].value) {
+        if tokens[0].value == "добрый" {
+            guard tokens.count > 2, ["день", "вечер"].contains(tokens[1].value) else { return }
             addComma(after: 1, tokens: tokens, in: text, to: &offsets)
         } else {
             addComma(after: 0, tokens: tokens, in: text, to: &offsets)
@@ -256,8 +256,9 @@ final class RussianPunctuationEngine {
         let string = text as NSString
         var cursor = utf16Offset
         while cursor < string.length,
-              CharacterSet.whitespaces.contains(UnicodeScalar(string.character(at: cursor))!) { cursor += 1 }
-        if cursor < string.length, ",;:—–-".utf16.contains(string.character(at: cursor)) { return false }
+              let scalar = UnicodeScalar(string.character(at: cursor)),
+              CharacterSet.whitespaces.contains(scalar) { cursor += 1 }
+        if cursor < string.length, ",;:—–-.!?…".utf16.contains(string.character(at: cursor)) { return false }
         if utf16Offset > 0, ",;:—–-".utf16.contains(string.character(at: utf16Offset - 1)) { return false }
         return true
     }

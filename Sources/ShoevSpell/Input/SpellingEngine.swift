@@ -7,25 +7,33 @@ final class SpellingEngine: KeyboardMonitorDelegate {
     private let logger = Logger(subsystem: "com.shoev.spell", category: "input")
     private let corrector: CorrectionEngine
     private let punctuator: RussianPunctuationEngine
-    private let injector: EventInjector
+    private let injector: TextInjecting
     private let journal: JournalStore
     private var word = ""
     private var phrase = ""
     private var activePID: pid_t?
-    private let caretReader = CaretContextReader()
+    private let readCaret: () -> CaretContext?
+    private let defaults: UserDefaults
+    private let frontmost: () -> NSRunningApplication?
     private var knownPrefix: String?
     private var editingWord = false
 
     init(
         corrector: CorrectionEngine = CorrectionEngine(),
         punctuator: RussianPunctuationEngine = RussianPunctuationEngine(),
-        injector: EventInjector = EventInjector(),
-        journal: JournalStore = JournalStore()
+        injector: TextInjecting = EventInjector(),
+        journal: JournalStore = JournalStore(),
+        defaults: UserDefaults = .standard,
+        readCaret: @escaping () -> CaretContext? = { CaretContextReader().read() },
+        frontmost: @escaping () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication }
     ) {
         self.corrector = corrector
         self.punctuator = punctuator
         self.injector = injector
         self.journal = journal
+        self.defaults = defaults
+        self.readCaret = readCaret
+        self.frontmost = frontmost
     }
 
     func monitorDidReset(_ monitor: KeyboardMonitor) {
@@ -36,32 +44,35 @@ final class SpellingEngine: KeyboardMonitorDelegate {
     }
 
     func monitor(_ monitor: KeyboardMonitor, keyDown event: CGEvent, text: String, keyCode: CGKeyCode) -> Bool {
-        let app = NSWorkspace.shared.frontmostApplication
+        let app = frontmost()
         if activePID != app?.processIdentifier {
             logger.info("Frontmost application changed; bufferedCharacters=\(self.phrase.count)")
             activePID = app?.processIdentifier
             reset()
         }
-        guard UserDefaults.standard.bool(forKey: PreferenceKey.enabled), !isExcluded(app) else {
+        guard defaults.bool(forKey: PreferenceKey.enabled), !isExcluded(app) else {
             reset(); return false
         }
         if event.flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty == false {
             logger.info("Input context reset by modifier; bufferedCharacters=\(self.phrase.count)")
             reset(); return false
         }
-        if keyCode == 51 {
-            knownPrefix = nil
-            if !phrase.isEmpty { phrase.removeLast() }
-            rebuildCurrentWord()
+        if keyCode == 51 || keyCode == 117 {
+            // Deletion can remove a selection, composed character or text outside
+            // our buffer. Only start tracking again at a verified word boundary.
+            reset()
             return false
         }
         if [123, 124, 125, 126, 115, 119, 116, 121].contains(keyCode) {
             logger.info("Input context reset by navigation; bufferedCharacters=\(self.phrase.count)")
             reset(); return false
         }
-        guard !text.isEmpty else { return false }
-        let caret = caretReader.read()
-        if let caret {
+        guard !text.isEmpty else { reset(); return false }
+        guard let caret = readCaret() else {
+            reset()
+            return false
+        }
+        do {
             if caret.selectionLength > 0 || (!phrase.isEmpty && !caret.prefix.hasSuffix(phrase)) {
                 reset()
             }
@@ -69,7 +80,8 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             if phrase.isEmpty { editingWord = caret.startsInsideWord || caret.selectionLength > 0 }
         }
         if text.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) {
-            let shouldCapitalize = UserDefaults.standard.bool(forKey: PreferenceKey.automaticCapitalization)
+            let shouldCapitalize = defaults.bool(forKey: PreferenceKey.automaticCapitalization)
+                && !editingWord
                 && knownPrefix.map { CapitalizationContext.shouldCapitalize(after: $0) } == true
             let capturedText = shouldCapitalize ? punctuator.capitalized(text) : text
             knownPrefix = knownPrefix.map { $0 + capturedText }
@@ -77,11 +89,12 @@ final class SpellingEngine: KeyboardMonitorDelegate {
                 word += capturedText
                 phrase += capturedText
             }
-            if phrase.count > 500 {
-                phrase = word
+            if phrase.count > 500 || word.count > 32 {
+                reset()
+                editingWord = true
             }
             if capturedText != text {
-                injector.replace(deleteCount: 0, with: capturedText)
+                injector.replace(deleteCount: 0, with: capturedText, trailingEvent: nil)
                 return true
             }
             return false
@@ -116,7 +129,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
 
     private func isExcluded(_ app: NSRunningApplication?) -> Bool {
         guard let id = app?.bundleIdentifier else { return false }
-        return UserDefaults.standard.stringArray(forKey: PreferenceKey.excludedApplications)?.contains(id) == true
+        return defaults.stringArray(forKey: PreferenceKey.excludedApplications)?.contains(id) == true
     }
 
     private func finishSegment(
@@ -130,14 +143,14 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         var correction: Correction?
 
         if !word.isEmpty,
-           UserDefaults.standard.bool(forKey: PreferenceKey.automaticCorrection),
+           defaults.bool(forKey: PreferenceKey.automaticCorrection),
            let found = corrector.correction(for: word) {
             replacement.removeLast(word.count)
             replacement += found.replacement
             correction = found
         }
 
-        if UserDefaults.standard.bool(forKey: PreferenceKey.automaticPunctuation) {
+        if defaults.bool(forKey: PreferenceKey.automaticPunctuation) {
             let beforePunctuation = replacement
             replacement = punctuator.punctuate(replacement)
             logger.info("Punctuation evaluated; bufferedCharacters=\(originalPhrase.count), wordCharacters=\(self.word.count), changed=\(beforePunctuation != replacement)")
@@ -151,7 +164,14 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         }
 
         if replacement != originalPhrase {
-            injector.replace(deleteCount: originalPhrase.count, with: replacement, trailingEvent: trailingEvent)
+            // Re-read after candidate lookup: focus/selection may have changed.
+            guard let caret = readCaret(), caret.selectionLength == 0,
+                  frontmost()?.processIdentifier == application?.processIdentifier,
+                  caret.prefix == knownPrefix,
+                  caret.prefix.hasSuffix(originalPhrase),
+                  !originalPhrase.isEmpty else { reset(); return false }
+            let edit = TextReplacement(original: originalPhrase, replacement: replacement)
+            injector.replace(deleteCount: edit.deleteCount, with: edit.text, trailingEvent: trailingEvent)
             if let correction { journal.record(correction, application: application) }
             if endsSentence {
                 reset()
@@ -170,12 +190,6 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             word.removeAll(keepingCapacity: true)
         }
         return false
-    }
-
-    private func rebuildCurrentWord() {
-        word = String(phrase.reversed().prefix { character in
-            character.unicodeScalars.allSatisfy { CharacterSet.letters.contains($0) }
-        }.reversed())
     }
 
     private func reset() {

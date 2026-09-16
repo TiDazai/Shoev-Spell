@@ -78,10 +78,17 @@ final class KeyboardMonitor {
 
     fileprivate func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            delegate?.monitorDidReset(self)
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
         if event.getIntegerValueField(.eventSourceUserData) == EventInjector.marker {
+            return Unmanaged.passUnretained(event)
+        }
+        // Shoev Switcher replaces text independently; its synthetic events must
+        // invalidate our old phrase, not become a new spelling candidate.
+        if event.getIntegerValueField(.eventSourceUserData) == 0x53484F4556 {
+            delegate?.monitorDidReset(self)
             return Unmanaged.passUnretained(event)
         }
         if IsSecureEventInputEnabled() {
@@ -96,6 +103,10 @@ final class KeyboardMonitor {
         var length = 0
         var buffer = [UniChar](repeating: 0, count: 8)
         event.keyboardGetUnicodeString(maxStringLength: 8, actualStringLength: &length, unicodeString: &buffer)
+        guard length <= buffer.count else {
+            delegate?.monitorDidReset(self)
+            return Unmanaged.passUnretained(event)
+        }
         let text = length > 0 ? String(utf16CodeUnits: buffer, count: length) : ""
         return delegate?.monitor(self, keyDown: event, text: text, keyCode: code) == true
             ? nil

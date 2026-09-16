@@ -13,6 +13,9 @@ final class CorrectionEngine {
     func correction(for original: String) -> Correction? {
         let normalized = original.lowercased(with: Locale(identifier: "en_US_POSIX"))
         guard Self.protectedWords.contains(normalized) == false,
+              original.allSatisfy({ $0.isLetter }),
+              original == original.lowercased() || original == original.uppercased()
+                || original == original.prefix(1).uppercased() + original.dropFirst().lowercased(),
               normalized.count >= defaults.integer(forKey: PreferenceKey.minimumLength),
               normalized.count <= 32,
               let language = SpellLanguage.detect(in: normalized) else { return nil }
