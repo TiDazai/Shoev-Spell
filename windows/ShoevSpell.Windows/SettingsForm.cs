@@ -16,7 +16,7 @@ internal sealed class SettingsForm : Form
         var header = new Panel { Dock = DockStyle.Top, Height = 105, BackColor = Branding.Burgundy };
         var logo = new PictureBox { Image = Image.FromFile(Path.Combine(AppContext.BaseDirectory, "app-icon.png")), SizeMode = PictureBoxSizeMode.Zoom, Bounds = new Rectangle(18, 12, 78, 78) };
         var title = new Label { Text = "Shoev Spell", ForeColor = Branding.Platinum, Font = new Font("Segoe UI", 22, FontStyle.Bold), AutoSize = true, Location = new Point(112, 20) };
-        var subtitle = new Label { Text = "Локальная проверка текста для Windows", ForeColor = Color.FromArgb(225, 210, 215), Font = new Font("Segoe UI", 10), AutoSize = true, Location = new Point(115, 62) };
+        var subtitle = new Label { Text = "Локальная проверка русского и английского текста", ForeColor = Color.FromArgb(225, 210, 215), Font = new Font("Segoe UI", 10), AutoSize = true, Location = new Point(115, 62) };
         header.Controls.AddRange([logo, title, subtitle]);
 
         var tabs = new TabControl { Dock = DockStyle.Fill, Padding = new Point(14, 7) };
@@ -48,8 +48,8 @@ internal sealed class SettingsForm : Form
     }
     private static TabPage BuildAbout()
     {
-        var page = Page("О программе"); var layout = Stack(); layout.Controls.Add(Section("Shoev Spell для Windows"));
-        layout.Controls.Add(Help("Полноценная Windows-версия Shoev Spell с тем же локальным русско-английским словарём, что и версия для macOS.\n\nВерсия 0.1.1 • данные хранятся только на этом компьютере.")); page.Controls.Add(layout); return page;
+        var page = Page("О программе"); var layout = Stack(); layout.Controls.Add(Section("Shoev Spell"));
+        layout.Controls.Add(Help("Shoev Spell исправляет опечатки, пунктуацию и регистр с общим локальным русско-английским словарём.\n\nВерсия 0.1.2 • данные хранятся только на этом компьютере.")); page.Controls.Add(layout); return page;
     }
     private void LoadValues()
     {

@@ -10,6 +10,7 @@ internal static class Program
     {
         ApplicationConfiguration.Initialize();
         if (args.Contains("--self-test")) return SelfTest.Run();
+        if (args.Contains("--input-self-test")) return InputSelfTest.Run();
         using var singleInstance = new Mutex(true, "ShoevSpell.Windows.SingleInstance", out var created);
         if (!created) return 0;
         Application.Run(new SpellApplication(!args.Contains("--background")));
@@ -24,7 +25,9 @@ internal static class SelfTest
         using var lexicon = new Lexicon();
         return lexicon.Score("привет", 1) is > 0
             && lexicon.Score("hello", 0) is > 0
-            && CorrectionEngine.Find("превет", lexicon) == "привет" ? 0 : 1;
+            && CorrectionEngine.Find("превет", lexicon) == "привет"
+            && RussianPunctuation.Punctuate("Я думаю что это работает") == "Я думаю, что это работает"
+            && RussianPunctuation.Punctuate("Конечно это работает") == "Конечно, это работает" ? 0 : 1;
     }
 }
 
@@ -65,7 +68,7 @@ internal sealed class SpellApplication : ApplicationContext
             new ToolStripMenuItem("Журнал исправлений…", null, (_, _) => OpenJournal()),
             new ToolStripSeparator(),
             new ToolStripMenuItem("О Shoev Spell", null, (_, _) => MessageBox.Show(
-                "Shoev Spell для Windows\n\nЛокальное исправление русских и английских опечаток.\nДанные не отправляются в интернет.",
+                "Shoev Spell\n\nЛокальное исправление русских и английских опечаток.\nДанные не отправляются в интернет.",
                 "Shoev Spell", MessageBoxButtons.OK, MessageBoxIcon.Information)),
             new ToolStripMenuItem("Выход", null, (_, _) => ExitThread())]);
 

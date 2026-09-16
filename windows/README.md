@@ -1,6 +1,6 @@
-# Shoev Spell для Windows
+# Shoev Spell: реализация в `windows/`
 
-Это Windows-версия Shoev Spell в том же репозитории и с тем же локальным словарём, что и версия для macOS.
+Это платформенная реализация общего Shoev Spell. Она использует те же возможности, локальный словарь, фирменную иконку и общий цикл версий и релизов.
 
 ## Возможности
 
@@ -28,4 +28,4 @@ dotnet run --project ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release --n
 dotnet publish ShoevSpell.Windows/ShoevSpell.Windows.csproj -c Release -r win-x64 --self-contained true
 ```
 
-GitHub Actions прикладывает готовый `Shoev-Spell-Windows-x64.zip` к тому же релизу, где находится macOS DMG.
+GitHub Actions прикладывает готовый `Shoev-Spell-x64.zip` к общему релизу вместе с DMG.

@@ -39,11 +39,13 @@ jobs:
       - name: Verify Windows build
         shell: pwsh
         run: |
-          & "dist/windows/Shoev Spell.exe" --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Windows self-test failed" }
+          $core = Start-Process -FilePath "dist/windows/Shoev Spell.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($core.ExitCode -ne 0) { throw "Core self-test failed" }
+          $input = Start-Process -FilePath "dist/windows/Shoev Spell.exe" -ArgumentList "--input-self-test" -Wait -PassThru
+          if ($input.ExitCode -ne 0) { throw "Input self-test failed" }
       - name: Create Windows archive
         shell: pwsh
-        run: Compress-Archive -Path dist/windows/* -DestinationPath dist/Shoev-Spell-Windows-x64.zip
+        run: Compress-Archive -Path dist/windows/* -DestinationPath dist/Shoev-Spell-x64.zip
       - name: Attach Windows build to release
         shell: pwsh
         env:
@@ -52,4 +54,4 @@ jobs:
         run: |
           gh release view $env:RELEASE_TAG 2>$null
           if ($LASTEXITCODE -ne 0) { gh release create $env:RELEASE_TAG --generate-notes }
-          gh release upload $env:RELEASE_TAG dist/Shoev-Spell-Windows-x64.zip --clobber
+          gh release upload $env:RELEASE_TAG dist/Shoev-Spell-x64.zip --clobber
