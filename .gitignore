@@ -4,3 +4,5 @@ dist/
 Sources/ShoevSpell/Resources/lexicon.sqlite3
 Resources/Lexicon/lexicon.sqlite3.gz
 *.xcuserstate
+windows/**/bin/
+windows/**/obj/
