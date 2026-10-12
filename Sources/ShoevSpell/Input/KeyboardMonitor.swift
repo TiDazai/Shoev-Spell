@@ -16,7 +16,10 @@ final class KeyboardMonitor {
     private var source: CFRunLoopSource?
     private var timer: Timer?
 
-    var isRunning: Bool { tap != nil }
+    var isRunning: Bool {
+        guard let tap else { return false }
+        return CFMachPortIsValid(tap) && CGEvent.tapIsEnabled(tap: tap) && AXIsProcessTrusted()
+    }
 
     @discardableResult
     func requestPermissions() -> Bool {
@@ -40,7 +43,12 @@ final class KeyboardMonitor {
 
     @discardableResult
     func start() -> Bool {
-        guard tap == nil else { return true }
+        if let tap, CFMachPortIsValid(tap), AXIsProcessTrusted() {
+            CGEvent.tapEnable(tap: tap, enable: true)
+            return true
+        }
+        stop()
+        guard AXIsProcessTrusted() else { return false }
         let types: [CGEventType] = [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
         guard let created = CGEvent.tapCreate(
@@ -61,6 +69,7 @@ final class KeyboardMonitor {
         source = runLoopSource
         timer = .scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let tap = self?.tap, !CGEvent.tapIsEnabled(tap: tap) else { return }
+            if let self { self.delegate?.monitorDidReset(self) }
             CGEvent.tapEnable(tap: tap, enable: true)
         }
         logger.info("Event tap started; listenPermission=\(CGPreflightListenEventAccess()), postPermission=\(CGPreflightPostEventAccess())")
@@ -70,7 +79,7 @@ final class KeyboardMonitor {
     func stop() {
         timer?.invalidate()
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
-        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let tap { CFMachPortInvalidate(tap) }
         timer = nil
         source = nil
         tap = nil

@@ -5,6 +5,19 @@ struct CaretContext {
     let prefix: String
     let selectionLength: Int
     var nextCharacter: Character? = nil
+    var element: AXUIElement? = nil
+
+    func matches(_ other: CaretContext) -> Bool {
+        sameField(as: other) && prefix == other.prefix && selectionLength == other.selectionLength
+            && nextCharacter == other.nextCharacter
+    }
+
+    func sameField(as other: CaretContext) -> Bool {
+        if let element, let otherElement = other.element {
+            return CFEqual(element, otherElement)
+        }
+        return element == nil && other.element == nil
+    }
 
     var startsInsideWord: Bool {
         func isToken(_ character: Character?) -> Bool {
@@ -71,7 +84,8 @@ final class CaretContextReader {
         return CaretContext(
             prefix: nsText.substring(to: range.location),
             selectionLength: range.length,
-            nextCharacter: nsText.substring(from: range.location + range.length).first
+            nextCharacter: nsText.substring(from: range.location + range.length).first,
+            element: element
         )
     }
 }

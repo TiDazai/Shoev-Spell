@@ -12,13 +12,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.engine = engine
         monitor.delegate = engine
         menu = MenuBarController(monitor: monitor)
-        guard !monitor.start() else { return }
-        _ = monitor.requestPermissions()
+        if !monitor.start() { _ = monitor.requestPermissions() }
+        menu?.refresh()
         permissionTimer = .scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
-            guard self.monitor.start() else { return }
+            if !self.monitor.isRunning { _ = self.monitor.start() }
             self.menu?.refresh()
-            timer.invalidate()
         }
     }
 

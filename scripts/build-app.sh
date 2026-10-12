@@ -18,7 +18,11 @@ cp "$project_dir/Resources/AppIcon.icns" "$app/Contents/Resources/AppIcon.icns"
 cp "$project_dir/THIRD_PARTY_NOTICES.md" "$app/Contents/Resources/THIRD_PARTY_NOTICES.md"
 cp "$project_dir/LEXICON_LICENSES.md" "$app/Contents/Resources/LEXICON_LICENSES.md"
 bundle="$(find "$arm_bin" -maxdepth 1 -type d -name 'ShoevSpell_*.bundle' -print -quit)"
-[[ -z "$bundle" ]] || cp -R "$bundle" "$app/Contents/Resources/"
+if [[ -z "$bundle" ]]; then
+  echo "Missing application resource bundle" >&2
+  exit 1
+fi
+cp -R "$bundle" "$app/Contents/Resources/"
 if [[ -n "${SIGN_IDENTITY:-}" && "$SIGN_IDENTITY" != "-" ]]; then
   codesign \
     --force \

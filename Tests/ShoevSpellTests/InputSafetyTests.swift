@@ -11,12 +11,14 @@ final class InputSafetyTests: XCTestCase {
         XCTAssertEqual(terminal.text, ".")
     }
 
-    func testLongUnicodeReplacementIsLossless() {
-        let text = String(repeating: "я", count: 19) + "😀" + String(repeating: "привет 👨‍👩‍👦 ", count: 50)
-        let chunks = TextReplacement.unicodeChunks(text)
-        XCTAssertTrue(chunks.allSatisfy { $0.count <= 20 })
-        XCTAssertEqual(chunks.map { String(decoding: $0, as: UTF16.self) }.joined(), text)
-        XCTAssertTrue(TextReplacement.unicodeChunks("").isEmpty)
+    func testUnicodeSelectionUsesUTF16InsteadOfCharacterCount() {
+        let prefix = "привет 👨‍👩‍👦"
+        let range = TextReplacement.selection(prefix: prefix, deleteCount: 1)!
+        XCTAssertEqual(range.location, "привет ".utf16.count)
+        XCTAssertEqual(range.length, "👨‍👩‍👦".utf16.count)
+        XCTAssertNil(TextReplacement.selection(prefix: "abc", deleteCount: 4))
+        XCTAssertNil(TextReplacement.selection(prefix: "abc", deleteCount: -1))
+        XCTAssertEqual(TextReplacement.selection(prefix: prefix, deleteCount: 0)?.location, prefix.utf16.count)
     }
 
     func testIdentifiersAndJoinedWordsAreNotNewWords() {

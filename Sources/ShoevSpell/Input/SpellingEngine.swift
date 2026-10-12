@@ -17,6 +17,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
     private let frontmost: () -> NSRunningApplication?
     private var knownPrefix: String?
     private var editingWord = false
+    private var expectedCaret: CaretContext?
 
     init(
         corrector: CorrectionEngine = CorrectionEngine(),
@@ -73,10 +74,12 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             return false
         }
         do {
-            if caret.selectionLength > 0 || (!phrase.isEmpty && !caret.prefix.hasSuffix(phrase)) {
+            if expectedCaret.map({ !caret.sameField(as: $0) }) == true
+                || caret.selectionLength > 0 || (!phrase.isEmpty && !caret.prefix.hasSuffix(phrase)) {
                 reset()
             }
             knownPrefix = caret.prefix
+            expectedCaret = caret
             if phrase.isEmpty { editingWord = caret.startsInsideWord || caret.selectionLength > 0 }
         }
         if text.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) {
@@ -94,8 +97,9 @@ final class SpellingEngine: KeyboardMonitorDelegate {
                 editingWord = true
             }
             if capturedText != text {
-                injector.replace(deleteCount: 0, with: capturedText, trailingEvent: nil)
-                return true
+                let success = injector.replace(deleteCount: 0, with: capturedText, trailingEvent: nil, context: caret)
+                if !success { reset() }
+                return success
             }
             return false
         }
@@ -154,7 +158,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             let beforePunctuation = replacement
             replacement = punctuator.punctuate(replacement)
             logger.info("Punctuation evaluated; bufferedCharacters=\(originalPhrase.count), wordCharacters=\(self.word.count), changed=\(beforePunctuation != replacement)")
-            if delimiter == "\r" || delimiter == "\n" {
+            if (delimiter == "\r" || delimiter == "\n"), SpellLanguage.detect(in: replacement) == .russian {
                 replacement = replacement.trimmingCharacters(in: .whitespaces)
                 if let last = replacement.last,
                    CharacterSet(charactersIn: ".!?…:;").contains(last.unicodeScalars.first!) == false {
@@ -166,12 +170,16 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         if replacement != originalPhrase {
             // Re-read after candidate lookup: focus/selection may have changed.
             guard let caret = readCaret(), caret.selectionLength == 0,
+                  let expectedCaret, caret.matches(expectedCaret),
                   frontmost()?.processIdentifier == application?.processIdentifier,
                   caret.prefix == knownPrefix,
                   caret.prefix.hasSuffix(originalPhrase),
                   !originalPhrase.isEmpty else { reset(); return false }
             let edit = TextReplacement(original: originalPhrase, replacement: replacement)
-            injector.replace(deleteCount: edit.deleteCount, with: edit.text, trailingEvent: trailingEvent)
+            guard injector.replace(deleteCount: edit.deleteCount, with: edit.text, trailingEvent: trailingEvent, context: caret) else {
+                reset()
+                return false
+            }
             if let correction { journal.record(correction, application: application) }
             if endsSentence {
                 reset()
@@ -193,6 +201,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
     }
 
     private func reset() {
+        expectedCaret = nil
         knownPrefix = nil
         editingWord = false
         word.removeAll(keepingCapacity: true)
