@@ -24,15 +24,15 @@ final class KeyboardMonitor {
     @discardableResult
     func requestPermissions() -> Bool {
         let canListen = CGPreflightListenEventAccess() || CGRequestListenEventAccess()
-        let canPost = CGPreflightPostEventAccess() || CGRequestPostEventAccess()
-        return canListen && canPost
+        let canAccess = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+        return canListen && canAccess
     }
 
     func openMissingPermissionSettings() {
         let anchor: String
         if !CGPreflightListenEventAccess() {
             anchor = "Privacy_ListenEvent"
-        } else if !CGPreflightPostEventAccess() {
+        } else if !AXIsProcessTrusted() {
             anchor = "Privacy_Accessibility"
         } else {
             return
@@ -44,6 +44,7 @@ final class KeyboardMonitor {
     @discardableResult
     func start() -> Bool {
         if let tap, CFMachPortIsValid(tap), AXIsProcessTrusted() {
+            if !CGEvent.tapIsEnabled(tap: tap) { delegate?.monitorDidReset(self) }
             CGEvent.tapEnable(tap: tap, enable: true)
             return true
         }
@@ -77,6 +78,7 @@ final class KeyboardMonitor {
     }
 
     func stop() {
+        delegate?.monitorDidReset(self)
         timer?.invalidate()
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         if let tap { CFMachPortInvalidate(tap) }

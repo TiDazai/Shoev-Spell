@@ -26,7 +26,9 @@ internal static class NativeMethods
     [StructLayout(LayoutKind.Sequential)]
     internal struct Input { internal uint type; internal InputUnion data; }
     [StructLayout(LayoutKind.Explicit)]
-    internal struct InputUnion { [FieldOffset(0)] internal KeybdInput keyboard; }
+    internal struct InputUnion { [FieldOffset(0)] internal KeybdInput keyboard; [FieldOffset(0)] internal MouseInput mouse; }
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MouseInput { internal int dx, dy; internal uint mouseData, flags, time; internal nuint extraInfo; }
     [StructLayout(LayoutKind.Sequential)]
     internal struct KeybdInput { internal ushort virtualKey, scanCode; internal uint flags, time; internal nuint extraInfo; }
     [StructLayout(LayoutKind.Sequential)]
@@ -64,12 +66,12 @@ internal static class NativeMethods
         try { return Process.GetProcessById((int)pid).ProcessName; } catch { return string.Empty; }
     }
 
-    internal static void ReplaceText(int deleteUtf16Units, string replacement, string delimiter)
+    internal static bool ReplaceText(int deleteUtf16Units, string replacement, string delimiter)
     {
         var inputs = new List<Input>((deleteUtf16Units + replacement.Length + delimiter.Length) * 2);
         for (var i = 0; i < deleteUtf16Units; i++) AddVirtualKey(inputs, VkBack);
         foreach (var unit in (replacement + delimiter).AsSpan()) AddUnicode(inputs, unit);
-        if (inputs.Count > 0) SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<Input>());
+        return inputs.Count == 0 || SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf<Input>()) == inputs.Count;
     }
 
     private static void AddVirtualKey(List<Input> list, ushort key)
@@ -121,8 +123,10 @@ internal readonly record struct KeyEvent(uint VirtualKey, uint ScanCode)
 {
     internal string Text()
     {
+        if (VirtualKey == 0xE7 && ScanCode > 0) return ((char)ScanCode).ToString();
         var state = new byte[256];
         if (!NativeMethods.GetKeyboardState(state)) return string.Empty;
+        if (VirtualKey < state.Length) state[VirtualKey] |= 0x80;
         var foreground = NativeMethods.GetForegroundWindow();
         var thread = NativeMethods.GetWindowThreadProcessId(foreground, out _);
         var buffer = new StringBuilder(8);

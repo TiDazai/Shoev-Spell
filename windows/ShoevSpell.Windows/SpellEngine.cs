@@ -33,8 +33,8 @@ internal sealed class SpellEngine
             if (SettingsStore.GetBool("Capitalization", true) && word.Length == 0 && ShouldCapitalize(phrase) && text.Any(char.IsLower))
             {
                 var upper = text.ToUpper(CultureInfo.CurrentCulture);
+                if (!NativeMethods.ReplaceText(0, upper, "")) { Reset(); return false; }
                 word += upper; phrase += upper;
-                NativeMethods.ReplaceText(0, upper, "");
                 return true;
             }
             word += text; phrase += text;
@@ -65,7 +65,7 @@ internal sealed class SpellEngine
 
         if (replacement != original && original.Length > 0)
         {
-            NativeMethods.ReplaceText(original.Length, replacement, delimiter);
+            if (!NativeMethods.ReplaceText(original.Length, replacement, delimiter)) { Reset(); return false; }
             if (correctedWord is not null) Corrected?.Invoke(word, correctedWord, NativeMethods.ForegroundProcessName());
             if (delimiter is "\r" or "\n") Reset(); else { phrase = replacement + delimiter; word = ""; }
             return true;

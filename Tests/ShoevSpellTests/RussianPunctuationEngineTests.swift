@@ -70,4 +70,32 @@ final class RussianPunctuationEngineTests: XCTestCase {
         XCTAssertEqual(engine.capitalized("hello"), "Hello")
         XCTAssertEqual(engine.capitalized("Я"), "Я")
     }
+
+    func testDoesNotTreatSentenceMembersAsIntroductoryWords() {
+        for text in ["это возможно", "путь короче", "мне кажется", "главное блюдо готово",
+                     "это должно быть здесь", "он может быть дома", "всё само собой получилось",
+                     "говори по существу", "мы сделали это таким образом"] {
+            XCTAssertEqual(engine.punctuate(text), text, text)
+        }
+    }
+
+    func testDoesNotGuessAddressesFromCapitalization() {
+        for text in ["Завтра приходите", "Потом сделай", "Спасибо большое", "Извини меня",
+                     "как работает Интернет"] {
+            XCTAssertEqual(engine.punctuate(text), text, text)
+        }
+    }
+
+    func testWaitsForConjunctionLookahead() {
+        XCTAssertEqual(engine.punctuate("он спросил что "), "он спросил что ")
+        XCTAssertEqual(engine.punctuate("он спросил что ли "), "он спросил что ли ")
+        XCTAssertEqual(engine.punctuate("возьми хотя бы книгу"), "возьми хотя бы книгу")
+        XCTAssertEqual(engine.punctuate("я думаю что ты "), "я думаю, что ты ")
+    }
+
+    func testIndirectQuestionDoesNotBecomeDirectQuestion() {
+        XCTAssertEqual(engine.terminalMark(for: "я не знаю придёт ли он"), ".")
+        XCTAssertEqual(engine.terminalMark(for: "он спросил что ли это правда"), ".")
+        XCTAssertEqual(engine.terminalMark(for: "не приедешь ли ты"), "?")
+    }
 }

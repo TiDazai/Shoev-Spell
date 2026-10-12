@@ -2,6 +2,25 @@ import XCTest
 @testable import ShoevSpell
 
 final class InputSafetyTests: XCTestCase {
+    func testSpaceAndPunctuationCanBeInsertedWithTheCorrection() {
+        for delimiter in [" ", ",", ".", "!", "…"] {
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: 49, keyDown: true)!
+            let units = Array(delimiter.utf16)
+            event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
+            XCTAssertEqual(EventInjector.inlineDelimiter(event), delimiter)
+        }
+        let enter = CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: true)!
+        enter.keyboardSetUnicodeString(stringLength: 1, unicodeString: [13])
+        XCTAssertNil(EventInjector.inlineDelimiter(enter))
+    }
+
+    func testUnsupportedAlphabetsAreNotMisclassified() {
+        XCTAssertNil(SpellLanguage.detect(in: "привіт"))
+        XCTAssertNil(SpellLanguage.detect(in: "café"))
+        XCTAssertNil(SpellLanguage.detect(in: "helloпривет"))
+        XCTAssertEqual(SpellLanguage.detect(in: "Привет, ёж!"), .russian)
+        XCTAssertEqual(SpellLanguage.detect(in: "Hello world!"), .english)
+    }
     func testOnlyChangedSuffixIsReplaced() {
         let edit = TextReplacement(original: "я думаю что", replacement: "я думаю, что")
         XCTAssertEqual(edit.deleteCount, 4)

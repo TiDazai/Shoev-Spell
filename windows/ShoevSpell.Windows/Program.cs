@@ -22,7 +22,8 @@ internal static class SelfTest
     internal static int Run()
     {
         using var lexicon = new Lexicon();
-        return lexicon.Score("привет", 1) is > 0
+        return System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.Input>() == (nint.Size == 8 ? 40 : 28)
+            && lexicon.Score("привет", 1) is > 0
             && lexicon.Score("hello", 0) is > 0
             && CorrectionEngine.Find("превет", lexicon) == "привет" ? 0 : 1;
     }

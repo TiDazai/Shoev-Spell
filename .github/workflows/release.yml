@@ -25,7 +25,10 @@ jobs:
           version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
           test "$RELEASE_TAG" = "v$version"
       - name: Create DMG
-        run: ./scripts/create-dmg.sh
+        run: |
+          ./scripts/prepare-lexicon.sh
+          swift test
+          ./scripts/create-dmg.sh
       - name: Verify artifact
         run: hdiutil verify dist/Shoev-Spell.dmg
       - name: Attach DMG to release
@@ -37,6 +40,7 @@ jobs:
           gh release upload "$RELEASE_TAG" dist/Shoev-Spell.dmg --clobber
 
   windows-release:
+    needs: release
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -50,8 +54,8 @@ jobs:
       - name: Verify Windows build
         shell: pwsh
         run: |
-          & "dist/windows/Shoev Spell.exe" --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Windows self-test failed" }
+          $spellTestProcess = Start-Process -FilePath "dist/windows/Shoev Spell.exe" -ArgumentList "--self-test" -Wait -PassThru
+          if ($spellTestProcess.ExitCode -ne 0) { throw "Windows self-test failed" }
       - name: Create Windows archive
         shell: pwsh
         run: Compress-Archive -Path dist/windows/* -DestinationPath dist/Shoev-Spell-Windows-x64.zip

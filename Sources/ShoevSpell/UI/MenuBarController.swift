@@ -5,6 +5,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let monitor: KeyboardMonitor
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let menu = NSMenu()
+    private let status = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var enabled = item("Shoev Spell включён", #selector(toggleEnabled))
     private lazy var automatic = item("Исправлять автоматически", #selector(toggleAutomatic))
     private lazy var punctuation = item("Расставлять знаки препинания", #selector(togglePunctuation))
@@ -12,6 +13,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private lazy var journal = item("Записывать исправления", #selector(toggleJournal))
     private lazy var login = item("Запускать при входе", #selector(toggleLogin))
     private lazy var permissions = item("Выдать системные разрешения…", #selector(requestPermissions))
+    private lazy var exclusion = item("Не исправлять в текущем приложении", #selector(excludeCurrentApplication))
 
     init(monitor: KeyboardMonitor) {
         self.monitor = monitor
@@ -22,6 +24,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         statusItem.button?.image = image ?? NSImage(systemSymbolName: "checkmark.circle", accessibilityDescription: "Shoev Spell")
         statusItem.button?.imagePosition = .imageOnly
         menu.delegate = self
+        menu.addItem(status)
+        menu.addItem(.separator())
         menu.addItem(enabled)
         menu.addItem(automatic)
         menu.addItem(punctuation)
@@ -30,7 +34,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(login)
         menu.addItem(permissions)
+        menu.addItem(exclusion)
+        menu.addItem(item("Открыть журнал исправлений…", #selector(openJournal)))
         menu.addItem(.separator())
+        menu.addItem(item("О Shoev Spell…", #selector(showAbout)))
         menu.addItem(item("Завершить Shoev Spell", #selector(quit), key: "q"))
         statusItem.menu = menu
         refresh()
@@ -47,6 +54,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         permissions.isHidden = monitor.isRunning
         statusItem.button?.alphaValue = enabled.state == .on ? 1 : 0.45
+        status.title = enabled.state == .off ? "Исправление приостановлено"
+            : monitor.isRunning ? "Готов к исправлению" : "Нужны системные разрешения"
+        statusItem.button?.toolTip = "Shoev Spell — \(status.title.lowercased())"
+        let current = NSWorkspace.shared.frontmostApplication
+        let identifier = current?.bundleIdentifier
+        exclusion.title = "Не исправлять в \(current?.localizedName ?? "текущем приложении")"
+        exclusion.isEnabled = identifier != nil && identifier != Bundle.main.bundleIdentifier
+        exclusion.state = identifier.map {
+            (UserDefaults.standard.stringArray(forKey: PreferenceKey.excludedApplications) ?? []).contains($0)
+        } == true ? .on : .off
     }
 
     private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
@@ -70,6 +87,35 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func openJournal() {
+        guard let base = try? FileManager.default.url(for: .applicationSupportDirectory,
+            in: .userDomainMask, appropriateFor: nil, create: true) else { return }
+        let directory = base.appendingPathComponent("Shoev Spell", isDirectory: true)
+        let file = directory.appendingPathComponent("corrections.jsonl")
+        if FileManager.default.fileExists(atPath: file.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([file])
+        } else { NSWorkspace.shared.open(directory) }
+    }
+
+    @objc private func excludeCurrentApplication() {
+        guard let app = NSWorkspace.shared.frontmostApplication, let identifier = app.bundleIdentifier,
+              identifier != Bundle.main.bundleIdentifier else { return }
+        var exclusions = UserDefaults.standard.stringArray(forKey: PreferenceKey.excludedApplications) ?? []
+        if exclusions.contains(identifier) { exclusions.removeAll { $0 == identifier } }
+        else { exclusions.append(identifier) }
+        UserDefaults.standard.set(exclusions, forKey: PreferenceKey.excludedApplications)
+        refresh()
+    }
+
+    @objc private func showAbout() {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+        NSApp.orderFrontStandardAboutPanel(options: [
+            .applicationName: "Shoev Spell", .applicationVersion: version,
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "SHOEV SYSTEMS"
+        ])
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     @objc private func toggleLogin() {
         do {

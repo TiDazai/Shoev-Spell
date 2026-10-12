@@ -27,35 +27,43 @@ final class RussianPunctuationEngine {
         ["по", "мере", "того", "как"], ["после", "того", "как"],
         ["потому", "что"], ["с", "тем", "чтобы"],
         ["с", "тех", "пор", "как"], ["так", "как"], ["так", "что"]
-    ]
+    ].sorted { $0.count > $1.count }
     private let interrogativeOpeners: Set<String> = [
         "кто", "что", "где", "куда", "откуда", "когда", "как", "зачем", "почему",
         "сколько", "чей", "чья", "чьё", "чьи", "какой", "какая", "какое", "какие"
     ]
     private let introductoryPhrases: [[String]] = [
-        ["без", "сомнения"], ["без", "шуток"], ["быть", "может"],
-        ["в", "общем"], ["в", "самом", "деле"], ["в", "сущности"],
+        ["без", "сомнения"], ["без", "шуток"],
+        ["в", "общем"], ["в", "сущности"],
         ["в", "частности"], ["во", "всяком", "случае"],
-        ["вне", "всякого", "сомнения"], ["должно", "быть"],
+        ["вне", "всякого", "сомнения"],
         ["другими", "словами"], ["иначе", "говоря"], ["как", "всегда"],
         ["как", "говорится"], ["к", "несчастью"], ["к", "огорчению"],
         ["к", "радости"], ["к", "сожалению"], ["к", "счастью"],
         ["к", "стыду"], ["к", "удивлению"], ["между", "прочим"],
-        ["может", "быть"], ["надо", "думать"], ["надо", "признаться"],
-        ["надо", "сказать"], ["одним", "словом"], ["по", "всей", "вероятности"],
-        ["по", "сути"], ["по", "существу"], ["по", "правде", "говоря"],
-        ["прямо", "скажем"], ["само", "собой"], ["собственно", "говоря"],
+        ["надо", "признаться"],
+        ["по", "всей", "вероятности"], ["по", "правде", "говоря"],
+        ["прямо", "скажем"], ["собственно", "говоря"],
         ["стало", "быть"], ["строго", "говоря"], ["судя", "по", "всему"],
-        ["таким", "образом"], ["так", "сказать"], ["честно", "говоря"]
+        ["так", "сказать"], ["честно", "говоря"]
     ]
     private let introductoryWords: Set<String> = [
         "безусловно", "бесспорно", "вероятно", "видимо", "во-первых",
-        "во-вторых", "во-третьих", "возможно", "впрочем", "главное",
-        "естественно", "итак", "кажется", "конечно", "короче", "кстати",
-        "наверное", "наконец", "например", "наоборот", "несомненно",
-        "очевидно", "пожалуй", "по-видимому", "по-моему", "по-твоему",
-        "разумеется", "следовательно", "словом"
+        "во-вторых", "во-третьих", "впрочем", "итак", "конечно", "кстати",
+        "наверное", "например", "несомненно", "пожалуй", "по-видимому",
+        "по-моему", "по-твоему", "разумеется", "следовательно"
     ]
+    // Capitalization alone cannot distinguish a name from "Завтра" or "Потом".
+    private let commonNames: Set<String> = [
+        "александр", "алексей", "анна", "антон", "артём", "артем", "борис",
+        "вадим", "валентина", "василий", "виктор", "владимир", "галина",
+        "дарья", "дима", "дмитрий", "евгений", "екатерина", "елена", "иван",
+        "игорь", "ирина", "катя", "ксения", "мария", "марина", "маша",
+        "михаил", "наталья", "никита", "николай", "олег", "ольга", "павел",
+        "пётр", "петр", "роман", "саша", "светлана", "сергей", "татьяна",
+        "тима", "тимофей", "юлия", "юрий"
+    ]
+    private static let tokenExpression = try! NSRegularExpression(pattern: "[А-Яа-яЁё]+(?:-[А-Яа-яЁё]+)*")
     private let addressWords: Set<String> = [
         "бабушка", "брат", "братья", "господа", "граждане", "дамы", "дедушка",
         "доктор", "друзья", "друг", "коллега", "коллеги", "мама", "мам",
@@ -88,7 +96,9 @@ final class RussianPunctuationEngine {
     func terminalMark(for text: String) -> Character {
         let tokens = tokenize(text)
         guard let first = tokens.first?.value else { return "." }
-        if interrogativeOpeners.contains(first) || tokens.contains(where: { $0.value == "ли" }) {
+        let directLi = tokens.count > 1 && tokens[1].value == "ли"
+            || tokens.count > 2 && first == "не" && tokens[2].value == "ли"
+        if interrogativeOpeners.contains(first) || directLi {
             return "?"
         }
         return "."
@@ -107,9 +117,8 @@ final class RussianPunctuationEngine {
     }
 
     private func tokenize(_ text: String) -> [Token] {
-        let expression = try! NSRegularExpression(pattern: "[А-Яа-яЁё]+(?:-[А-Яа-яЁё]+)*")
         let fullRange = NSRange(location: 0, length: (text as NSString).length)
-        return expression.matches(in: text, range: fullRange).map {
+        return Self.tokenExpression.matches(in: text, range: fullRange).map {
             Token(value: (text as NSString).substring(with: $0.range).lowercased(), range: $0.range)
         }
     }
@@ -126,6 +135,9 @@ final class RussianPunctuationEngine {
             if conjunctionStart == index, subordinateConjunctions.contains(token) == false {
                 continue
             }
+            // Wait for the next word: "что ли" and "хотя бы" must not acquire
+            // an irreversible comma when only the conjunction has been typed.
+            guard index + 1 < tokens.count else { continue }
 
             if token == "что", index + 1 < tokens.count,
                ["бы", "ли", "за"].contains(tokens[index + 1].value) { continue }
@@ -141,7 +153,7 @@ final class RussianPunctuationEngine {
     }
 
     private func compoundConjunctionStart(endingAt index: Int, tokens: [Token]) -> Int? {
-        for phrase in compoundConjunctions.sorted(by: { $0.count > $1.count }) {
+        for phrase in compoundConjunctions {
             guard phrase.count <= index + 1 else { continue }
             let start = index + 1 - phrase.count
             if Array(tokens[start...index].map(\.value)) == phrase { return start }
@@ -198,21 +210,23 @@ final class RussianPunctuationEngine {
         if addressWords.contains(tokens[0].value), isLikelyImperative(tokens[1].value) {
             addComma(after: 0, tokens: tokens, in: text, to: &offsets)
         }
-        if attentionWords.contains(tokens[0].value) {
+        if attentionWords.contains(tokens[0].value),
+           tokens[0].value == "пожалуйста" || addressWords.contains(tokens[1].value) || commonNames.contains(tokens[1].value) {
             addComma(after: 0, tokens: tokens, in: text, to: &offsets)
         }
         if tokens.count > 2,
-           isCapitalized(tokens[0], in: text),
+           commonNames.contains(tokens[0].value), isCapitalized(tokens[0], in: text),
            isCapitalized(tokens[1], in: text),
+           tokens[1].value.hasSuffix("ич") || tokens[1].value.hasSuffix("на"),
            isLikelyImperative(tokens[2].value) {
             addComma(after: 1, tokens: tokens, in: text, to: &offsets)
-        } else if isCapitalized(tokens[0], in: text), isLikelyImperative(tokens[1].value) {
+        } else if commonNames.contains(tokens[0].value), isCapitalized(tokens[0], in: text), isLikelyImperative(tokens[1].value) {
             addComma(after: 0, tokens: tokens, in: text, to: &offsets)
         }
         if tokens.count > 2,
            interrogativeOpeners.contains(tokens[0].value),
            let last = tokens.last,
-           isCapitalized(last, in: text) {
+           commonNames.contains(last.value), isCapitalized(last, in: text) {
             addComma(before: tokens.count - 1, tokens: tokens, in: text, to: &offsets)
         }
     }

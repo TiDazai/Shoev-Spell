@@ -1,0 +1,30 @@
+name: Ошибка в Shoev Spell
+description: Неправильное исправление, пропавший символ или остановка обработки
+title: "[Bug] "
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия Shoev Spell
+      placeholder: "0.2.5"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Система и приложение
+      placeholder: "macOS 15, TextEdit; или Windows 11, Блокнот"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Как повторить
+      description: Что набрали, что нажали, что получилось и чего ожидали. Используйте пример без личных данных.
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Настройки и дополнительные сведения
+      description: Какие функции включены? Происходит ли ошибка после удаления или смены поля? Работает ли одновременно Shoev Switcher?

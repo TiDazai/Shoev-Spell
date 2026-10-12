@@ -23,12 +23,17 @@ final class EventInjector: TextInjecting {
         }
         let copied = trailingEvent?.copy()
         if trailingEvent != nil && copied == nil { return false }
+        // Space and punctuation belong in the same edit as the corrected text.
+        // This preserves the delimiter even if collapsing the caret fails.
+        let inlineDelimiter = trailingEvent.flatMap(Self.inlineDelimiter)
+        let insertedText = replacement + (inlineDelimiter ?? "")
         guard AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selection) == .success else { return false }
         let selected = CaretContextReader().read()
         guard selected?.sameField(as: current) == true,
               selected?.prefix == String(current.prefix.dropLast(deleteCount)),
               selected?.selectionLength == range.length,
-              AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, replacement as CFString) == .success else {
+              selected?.nextCharacter == current.nextCharacter,
+              AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, insertedText as CFString) == .success else {
             var previous = CFRange(location: current.prefix.utf16.count, length: 0)
             if let value = AXValueCreate(.cfRange, &previous) {
                 AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value)
@@ -37,16 +42,32 @@ final class EventInjector: TextInjecting {
         }
         // Selected-text setters differ between controls: collapse the replacement
         // explicitly before replaying Space/Enter, so it cannot overwrite it.
-        var end = CFRange(location: range.location + replacement.utf16.count, length: 0)
+        guard let after = CaretContextReader().read(), after.sameField(as: current) else {
+            return true // The edit succeeded; never replay a key into another field.
+        }
+        var end = CFRange(location: range.location + insertedText.utf16.count, length: 0)
         guard let endValue = AXValueCreate(.cfRange, &end),
               AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, endValue) == .success else {
             return true // Text is already replaced; do not replay into a selection.
         }
-        if let copied {
+        if inlineDelimiter == nil, let copied,
+           let final = CaretContextReader().read(), final.sameField(as: current),
+           final.selectionLength == 0,
+           final.prefix == String(current.prefix.dropLast(deleteCount)) + insertedText,
+           final.nextCharacter == current.nextCharacter {
             copied.setIntegerValueField(.eventSourceUserData, value: Self.marker)
             copied.post(tap: .cgAnnotatedSessionEventTap)
         }
         return true
+    }
+
+    static func inlineDelimiter(_ event: CGEvent) -> String? {
+        var length = 0
+        var buffer = [UniChar](repeating: 0, count: 8)
+        event.keyboardGetUnicodeString(maxStringLength: buffer.count, actualStringLength: &length, unicodeString: &buffer)
+        guard length > 0, length <= buffer.count else { return nil }
+        let text = String(utf16CodeUnits: buffer, count: length)
+        return text.unicodeScalars.allSatisfy { CharacterSet(charactersIn: " ,.;:!?…").contains($0) } ? text : nil
     }
 }
 
