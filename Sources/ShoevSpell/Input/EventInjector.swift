@@ -12,6 +12,7 @@ final class EventInjector: TextInjecting {
               let element = context.element,
               let current = CaretContextReader().read(),
               current.matches(context), current.selectionLength == 0,
+              let originalText = current.fullText,
               var range = TextReplacement.selection(prefix: current.prefix, deleteCount: deleteCount),
               let selection = AXValueCreate(.cfRange, &range) else { return false }
         // Require a writable selected-text API. Never delete first and then
@@ -21,18 +22,20 @@ final class EventInjector: TextInjecting {
             guard AXUIElementIsAttributeSettable(element, attribute as CFString, &writable) == .success,
                   writable.boolValue else { return false }
         }
-        let copied = trailingEvent?.copy()
-        if trailingEvent != nil && copied == nil { return false }
         // Space and punctuation belong in the same edit as the corrected text.
         // This preserves the delimiter even if collapsing the caret fails.
         let inlineDelimiter = trailingEvent.flatMap(Self.inlineDelimiter)
+        guard trailingEvent == nil || inlineDelimiter != nil else { return false }
         let insertedText = replacement + (inlineDelimiter ?? "")
+        let expectedText = (originalText as NSString).replacingCharacters(
+            in: NSRange(location: range.location, length: range.length), with: insertedText)
         guard AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, selection) == .success else { return false }
         let selected = CaretContextReader().read()
         guard selected?.sameField(as: current) == true,
               selected?.prefix == String(current.prefix.dropLast(deleteCount)),
               selected?.selectionLength == range.length,
               selected?.nextCharacter == current.nextCharacter,
+              selected?.fullText == originalText,
               AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, insertedText as CFString) == .success else {
             var previous = CFRange(location: current.prefix.utf16.count, length: 0)
             if let value = AXValueCreate(.cfRange, &previous) {
@@ -45,18 +48,21 @@ final class EventInjector: TextInjecting {
         guard let after = CaretContextReader().read(), after.sameField(as: current) else {
             return true // The edit succeeded; never replay a key into another field.
         }
+        if TextReplacement.wasIgnored(before: originalText, expected: expectedText, after: after.fullText) {
+            // A successful AX status is not proof of an edit. Restore the caret
+            // before allowing the original delimiter to reach the editor.
+            var previous = CFRange(location: current.prefix.utf16.count, length: 0)
+            guard let value = AXValueCreate(.cfRange, &previous),
+                  AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, value) == .success else {
+                return true // Do not let the delimiter overwrite the selection.
+            }
+            return false
+        }
+        guard after.fullText == expectedText else { return true }
         var end = CFRange(location: range.location + insertedText.utf16.count, length: 0)
         guard let endValue = AXValueCreate(.cfRange, &end),
               AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, endValue) == .success else {
             return true // Text is already replaced; do not replay into a selection.
-        }
-        if inlineDelimiter == nil, let copied,
-           let final = CaretContextReader().read(), final.sameField(as: current),
-           final.selectionLength == 0,
-           final.prefix == String(current.prefix.dropLast(deleteCount)) + insertedText,
-           final.nextCharacter == current.nextCharacter {
-            copied.setIntegerValueField(.eventSourceUserData, value: Self.marker)
-            copied.post(tap: .cgAnnotatedSessionEventTap)
         }
         return true
     }
@@ -74,6 +80,10 @@ final class EventInjector: TextInjecting {
 struct TextReplacement {
     let deleteCount: Int
     let text: String
+
+    static func wasIgnored(before: String, expected: String, after: String?) -> Bool {
+        before != expected && after == before
+    }
 
     static func selection(prefix: String, deleteCount: Int) -> CFRange? {
         guard deleteCount >= 0, deleteCount <= prefix.count else { return nil }

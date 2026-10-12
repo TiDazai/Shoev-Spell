@@ -6,10 +6,12 @@ struct CaretContext {
     let selectionLength: Int
     var nextCharacter: Character? = nil
     var element: AXUIElement? = nil
+    var fullText: String? = nil
 
     func matches(_ other: CaretContext) -> Bool {
         sameField(as: other) && prefix == other.prefix && selectionLength == other.selectionLength
             && nextCharacter == other.nextCharacter
+            && fullText == other.fullText
     }
 
     func sameField(as other: CaretContext) -> Bool {
@@ -57,7 +59,7 @@ enum CapitalizationContext {
     }
 }
 
-/// Reads only the text preceding the selection; never stores or logs field contents.
+/// Reads field context for immediate verification; never persists or logs it.
 final class CaretContextReader {
     func read() -> CaretContext? {
         let system = AXUIElementCreateSystemWide()
@@ -85,7 +87,8 @@ final class CaretContextReader {
             prefix: nsText.substring(to: range.location),
             selectionLength: range.length,
             nextCharacter: nsText.substring(from: range.location + range.length).first,
-            element: element
+            element: element,
+            fullText: text
         )
     }
 }

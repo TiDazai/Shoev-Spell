@@ -112,7 +112,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
         NSApp.orderFrontStandardAboutPanel(options: [
             .applicationName: "Shoev Spell", .applicationVersion: version,
-            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): "SHOEV SYSTEMS"
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"):
+                Bundle.main.object(forInfoDictionaryKey: "NSHumanReadableCopyright") as? String ?? "SHOEV SYSTEMS"
         ])
         NSApp.activate(ignoringOtherApps: true)
     }

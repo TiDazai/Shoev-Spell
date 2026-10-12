@@ -17,6 +17,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
     private let frontmost: () -> NSRunningApplication?
     private var knownPrefix: String?
     private var editingWord = false
+    private var capitalizeWord = false
     private var expectedCaret: CaretContext?
 
     init(
@@ -64,6 +65,12 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             reset()
             return false
         }
+        // Sending a message, inserting a newline and moving focus are editor
+        // actions. Preserve the physical event, including its modifier flags.
+        if [36, 76, 48].contains(keyCode) || text == "\r" || text == "\n" || text == "\t" {
+            reset()
+            return false
+        }
         if [123, 124, 125, 126, 115, 119, 116, 121].contains(keyCode) {
             logger.info("Input context reset by navigation; bufferedCharacters=\(self.phrase.count)")
             reset(); return false
@@ -83,44 +90,31 @@ final class SpellingEngine: KeyboardMonitorDelegate {
             if phrase.isEmpty { editingWord = caret.startsInsideWord || caret.selectionLength > 0 }
         }
         if text.unicodeScalars.allSatisfy({ CharacterSet.letters.contains($0) }) {
-            let shouldCapitalize = defaults.bool(forKey: PreferenceKey.automaticCapitalization)
-                && !editingWord
-                && knownPrefix.map { CapitalizationContext.shouldCapitalize(after: $0) } == true
-            let capturedText = shouldCapitalize ? punctuator.capitalized(text) : text
-            knownPrefix = knownPrefix.map { $0 + capturedText }
+            if word.isEmpty {
+                capitalizeWord = !editingWord && CapitalizationContext.shouldCapitalize(after: caret.prefix)
+            }
+            knownPrefix = knownPrefix.map { $0 + text }
             if !editingWord {
-                word += capturedText
-                phrase += capturedText
+                word += text
+                phrase += text
             }
             if phrase.count > 500 || word.count > 32 {
                 reset()
                 editingWord = true
             }
-            if capturedText != text {
-                let success = injector.replace(deleteCount: 0, with: capturedText, trailingEvent: nil, context: caret)
-                if !success { reset() }
-                return success
-            }
+            // Never suppress a letter to insert a capital via Accessibility.
+            // Some editors acknowledge the setter without inserting anything.
             return false
         }
 
         if text == " " {
             let result = finishSegment(trailingEvent: event, delimiter: text, endsSentence: false, application: app)
-            knownPrefix = knownPrefix.map { $0 + text }
-            editingWord = false
-            return result
-        }
-        if text == "\r" || text == "\n" {
-            let result = finishSegment(trailingEvent: event, delimiter: text, endsSentence: true, application: app)
-            knownPrefix = "\n"
             editingWord = false
             return result
         }
         if text.unicodeScalars.allSatisfy({ CharacterSet(charactersIn: ",.;:!?…").contains($0) }) {
             let endsSentence = text.unicodeScalars.contains { CharacterSet(charactersIn: ".!?…").contains($0) }
-            let prefix = knownPrefix
             let result = finishSegment(trailingEvent: event, delimiter: text, endsSentence: endsSentence, application: app)
-            knownPrefix = prefix.map { $0 + text }
             editingWord = false
             return result
         }
@@ -145,26 +139,29 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         let originalPhrase = phrase
         var replacement = phrase
         var correction: Correction?
-
+        var replacementWord = word
         if !word.isEmpty,
            defaults.bool(forKey: PreferenceKey.automaticCorrection),
            let found = corrector.correction(for: word) {
-            replacement.removeLast(word.count)
-            replacement += found.replacement
+            replacementWord = found.replacement
             correction = found
         }
+        if capitalizeWord, !editingWord, defaults.bool(forKey: PreferenceKey.automaticCapitalization) {
+            replacementWord = punctuator.capitalized(replacementWord)
+        }
+        if !word.isEmpty {
+            replacement.removeLast(word.count)
+            replacement += replacementWord
+        }
+        if let found = correction {
+            correction = Correction(original: found.original, replacement: replacementWord)
+        }
+        capitalizeWord = false
 
         if defaults.bool(forKey: PreferenceKey.automaticPunctuation) {
             let beforePunctuation = replacement
             replacement = punctuator.punctuate(replacement)
             logger.info("Punctuation evaluated; bufferedCharacters=\(originalPhrase.count), wordCharacters=\(self.word.count), changed=\(beforePunctuation != replacement)")
-            if (delimiter == "\r" || delimiter == "\n"), SpellLanguage.detect(in: replacement) == .russian {
-                replacement = replacement.trimmingCharacters(in: .whitespaces)
-                if let last = replacement.last,
-                   CharacterSet(charactersIn: ".!?…:;").contains(last.unicodeScalars.first!) == false {
-                    replacement.append(punctuator.terminalMark(for: replacement))
-                }
-            }
         }
 
         if replacement != originalPhrase {
@@ -204,6 +201,7 @@ final class SpellingEngine: KeyboardMonitorDelegate {
         expectedCaret = nil
         knownPrefix = nil
         editingWord = false
+        capitalizeWord = false
         word.removeAll(keepingCapacity: true)
         phrase.removeAll(keepingCapacity: true)
     }

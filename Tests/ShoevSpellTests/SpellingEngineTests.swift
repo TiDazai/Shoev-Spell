@@ -57,12 +57,112 @@ final class SpellingEngineTests: XCTestCase {
         defaults.set(true, forKey: PreferenceKey.automaticCapitalization)
         let injector = CapturedInjection()
         injector.succeeds = false
+        var prefix = "Готово. "
         let engine = SpellingEngine(injector: injector, defaults: defaults,
-            readCaret: { CaretContext(prefix: "", selectionLength: 0) }, frontmost: { nil })
+            readCaret: { CaretContext(prefix: prefix, selectionLength: 0) }, frontmost: { nil })
         let event = CGEvent(keyboardEventSource: nil, virtualKey: 35, keyDown: true)!
         event.flags = []
-        XCTAssertFalse(engine.monitor(KeyboardMonitor(), keyDown: event, text: "п", keyCode: 35))
-        XCTAssertEqual(injector.calls.first?.1, "П")
+        let monitor = KeyboardMonitor()
+        for c in "привет" {
+            XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: String(c), keyCode: 35))
+            prefix.append(c)
+            XCTAssertTrue(injector.calls.isEmpty)
+        }
+        XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: " ", keyCode: 49))
+        prefix += " "
+        XCTAssertEqual(injector.calls.first?.1, "Привет")
+        XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: "я", keyCode: 35))
+        XCTAssertEqual(injector.calls.count, 1)
+    }
+
+    func testCapitalizationWaitsForWordBoundaryAfterSentenceMarks() {
+        for preceding in ["", "Готово. ", "Готово! ", "Готово? ", "Готово… ", "Готово\n"] {
+            let suite = "SpellingEngineTests-\(UUID())"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            defaults.set(true, forKey: PreferenceKey.enabled)
+            defaults.set(true, forKey: PreferenceKey.automaticCapitalization)
+            var prefix = preceding
+            let injector = CapturedInjection()
+            let engine = SpellingEngine(injector: injector, defaults: defaults,
+                readCaret: { CaretContext(prefix: prefix, selectionLength: 0) }, frontmost: { nil })
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: 35, keyDown: true)!
+            event.flags = []
+            let monitor = KeyboardMonitor()
+            for c in "привет" {
+                XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: String(c), keyCode: 35))
+                prefix.append(c)
+            }
+            XCTAssertTrue(injector.calls.isEmpty, preceding)
+            XCTAssertTrue(engine.monitor(monitor, keyDown: event, text: " ", keyCode: 49), preceding)
+            XCTAssertEqual(injector.calls.first?.1, "Привет", preceding)
+        }
+    }
+
+    func testEnterAndTabNeverInvokeReplacement() {
+        let suite = "SpellingEngineTests-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: PreferenceKey.enabled)
+        defaults.set(true, forKey: PreferenceKey.automaticCapitalization)
+        defaults.set(true, forKey: PreferenceKey.automaticCorrection)
+        defaults.set(true, forKey: PreferenceKey.automaticPunctuation)
+        var prefix = ""
+        let injector = CapturedInjection()
+        let engine = SpellingEngine(injector: injector, defaults: defaults,
+            readCaret: { CaretContext(prefix: prefix, selectionLength: 0) }, frontmost: { nil })
+        let monitor = KeyboardMonitor()
+        for (code, text) in [(36, "\r"), (76, "\r"), (48, "\t"), (36, "\n")] {
+            for flags: CGEventFlags in [[], .maskShift] {
+                prefix = ""
+                engine.monitorDidReset(monitor)
+                let event = CGEvent(keyboardEventSource: nil, virtualKey: 35, keyDown: true)!
+                event.flags = []
+                for c in "превет" {
+                    XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: String(c), keyCode: 35))
+                    prefix.append(c)
+                }
+                event.flags = flags
+                XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: text, keyCode: CGKeyCode(code)))
+                XCTAssertEqual(event.flags, flags)
+                XCTAssertTrue(injector.calls.isEmpty)
+            }
+        }
+    }
+
+    func testExternalLayoutReplacementDiscardsUnconvertedPhrase() {
+        let suite = "SpellingEngineTests-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: PreferenceKey.enabled)
+        defaults.set(true, forKey: PreferenceKey.automaticCapitalization)
+        var prefix = "Готово. "
+        let injector = CapturedInjection()
+        let engine = SpellingEngine(injector: injector, defaults: defaults,
+            readCaret: { CaretContext(prefix: prefix, selectionLength: 0) }, frontmost: { nil })
+        let monitor = KeyboardMonitor()
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: 35, keyDown: true)!
+        event.flags = []
+        for c in "ghbdtn" {
+            XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: String(c), keyCode: 35))
+            prefix.append(c)
+        }
+        // Switcher handles the delimiter first and consumes that event. Spell
+        // next sees the changed field on the following physical letter.
+        prefix = "Готово. привет "
+        for c in "мир" {
+            XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: String(c), keyCode: 35))
+            prefix.append(c)
+        }
+        XCTAssertFalse(engine.monitor(monitor, keyDown: event, text: " ", keyCode: 49))
+        XCTAssertTrue(injector.calls.isEmpty)
+    }
+
+    func testIgnoredSetterIsNotConfusedWithChangedOrUnknownText() {
+        XCTAssertTrue(TextReplacement.wasIgnored(before: "превет", expected: "привет ", after: "превет"))
+        XCTAssertFalse(TextReplacement.wasIgnored(before: "превет", expected: "привет ", after: "привет "))
+        XCTAssertFalse(TextReplacement.wasIgnored(before: "превет", expected: "привет ", after: nil))
+        XCTAssertFalse(TextReplacement.wasIgnored(before: "привет", expected: "привет", after: "привет"))
     }
 
     func testFailedWordCorrectionPreservesDelimiter() {

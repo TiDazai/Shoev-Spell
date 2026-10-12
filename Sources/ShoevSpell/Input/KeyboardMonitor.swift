@@ -54,7 +54,9 @@ final class KeyboardMonitor {
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << $1.rawValue) }
         guard let created = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
+            // Layout conversion (Switcher uses headInsert) must run before
+            // spelling/capitalization, independent of application launch order.
+            place: .tailAppendEventTap,
             options: .defaultTap,
             eventsOfInterest: mask,
             callback: spellKeyboardCallback,

@@ -3,9 +3,9 @@ set -euo pipefail
 project_dir="$(cd "$(dirname "$0")/.." && pwd)"
 archive="$project_dir/Resources/Lexicon/lexicon.sqlite3.gz"
 target="$project_dir/Sources/ShoevSpell/Resources/lexicon.sqlite3"
-mkdir -p "$(dirname "$archive")" "$(dirname "$target")"
+mkdir -p "$(dirname "$archive")" "$(dirname "$target")" "$project_dir/.build"
 archive_tmp="$(mktemp "$archive.XXXXXX")"
-target_tmp="$(mktemp "$target.XXXXXX")"
+target_tmp="$(mktemp "$project_dir/.build/lexicon.sqlite3.XXXXXX")"
 trap 'rm -f "$archive_tmp" "$target_tmp"' EXIT
 expected='493b2b9e1ac83d755a77b24d031affb6a0ba05ac5cfeea0c9aff16ad054a4025'
 if [[ ! -f "$archive" ]]; then
