@@ -21,9 +21,9 @@
 
 Shoev Spell исправляет русские и английские опечатки во время набора. Живёт в строке меню macOS и помогает со знаками препинания и заглавными буквами. В репозитории также есть [версия для Windows](windows/README.md).
 
-Разработано компанией **SHOEV SYSTEMS**. Автор — **Тимур Шоев / Shoev Timur (Timur Shoev)**.
+Разработано компанией **SHOEV SYSTEMS**. Автор — **Shoev Timur (TiDazai)**.
 
-Shoev Spell is an offline Russian and English spell checker and autocorrect app for macOS and Windows, made by SHOEV SYSTEMS and Timur Shoev (Shoev Timur).
+Shoev Spell is an offline Russian and English spell checker and autocorrect app for macOS and Windows, made by SHOEV SYSTEMS.
 
 Словарь встроен в приложение. Исправления работают без интернета, журнал хранится на вашем компьютере.
 
@@ -40,9 +40,9 @@ Shoev Spell is an offline Russian and English spell checker and autocorrect app 
 
 Защищённый ввод пропускается. Терминалы и некоторые редакторы кода по умолчанию исключены из обработки.
 
-## SHOEV SYSTEMS · Тимур Шоев
+## SHOEV SYSTEMS
 
-**Shoev Timur / Timur Shoev / Тимур Шоев** — автор приложений SHOEV SYSTEMS для работы с русским и английским текстом:
+Приложения SHOEV SYSTEMS для работы с русским и английским текстом:
 
 - **Shoev Spell** — исправление опечаток, заглавные буквы и помощь с русской пунктуацией.
 - **[Shoev Switcher](https://github.com/TiDazai/Shoev-Switcher)** — автоматический переключатель раскладки RU ↔ EN: `ghbdtn` → `привет`.
