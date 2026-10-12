@@ -171,7 +171,10 @@ final class SpellingEngine: KeyboardMonitorDelegate {
                   frontmost()?.processIdentifier == application?.processIdentifier,
                   caret.prefix == knownPrefix,
                   caret.prefix.hasSuffix(originalPhrase),
-                  !originalPhrase.isEmpty else { reset(); return false }
+                  !originalPhrase.isEmpty else {
+                InputDiagnostics.shared.record(.contextChanged)
+                reset(); return false
+            }
             let edit = TextReplacement(original: originalPhrase, replacement: replacement)
             guard injector.replace(deleteCount: edit.deleteCount, with: edit.text, trailingEvent: trailingEvent, context: caret) else {
                 reset()

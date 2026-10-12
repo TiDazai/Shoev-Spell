@@ -12,7 +12,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <Version>0.2.6</Version>
+    <Version>0.2.7</Version>
     <Company>SHOEV SYSTEMS</Company>
     <Authors>Shoev Timur (TiDazai)</Authors>
     <Copyright>Copyright © 2026 SHOEV SYSTEMS</Copyright>

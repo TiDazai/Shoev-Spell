@@ -36,6 +36,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(permissions)
         menu.addItem(exclusion)
         menu.addItem(item("Открыть журнал исправлений…", #selector(openJournal)))
+        menu.addItem(item("Диагностика совместимости…", #selector(showDiagnostics)))
         menu.addItem(.separator())
         menu.addItem(item("О Shoev Spell…", #selector(showAbout)))
         menu.addItem(item("Завершить Shoev Spell", #selector(quit), key: "q"))
@@ -96,6 +97,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         if FileManager.default.fileExists(atPath: file.path) {
             NSWorkspace.shared.activateFileViewerSelecting([file])
         } else { NSWorkspace.shared.open(directory) }
+    }
+
+    @objc private func showDiagnostics() {
+        let alert = NSAlert()
+        alert.messageText = "Совместимость текстового поля"
+        alert.informativeText = (InputDiagnostics.shared.latest?.rawValue ?? "Попробуйте набрать слово с опечаткой и нажать пробел в нужном приложении.")
+            + "\n\nПоказана последняя причина обработки. Содержимое полей и набранные слова в диагностике не сохраняются."
+        alert.addButton(withTitle: "Понятно")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     @objc private func excludeCurrentApplication() {
